@@ -1,0 +1,11 @@
+# Ignore virtual environments
+venv/
+__pycache__/
+
+# Ignore temporary audio files
+*.wav
+*.m4a
+*.mp3
+
+# Ignore OS files
+.DS_Store
