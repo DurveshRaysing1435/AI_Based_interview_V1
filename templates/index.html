@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Interview Monitor - Candidate View</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background-color: #0f0f1a; color: white; display: flex; height: 100vh; overflow: hidden; }
+        
+        /* Left Side: Camera */
+        .camera-section { flex: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; position: relative; border-right: 2px solid #2a2a40;}
+        video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        .controls { position: absolute; bottom: 30px; display: flex; gap: 15px; z-index: 10; }
+        button { padding: 12px 24px; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.3s; box-shadow: 0px 4px 10px rgba(0,0,0,0.5); }
+        #startBtn { background: #28a745; color: white; }
+        #stopBtn { background: #dc3545; color: white; display: none; }
+        
+        /* Right Side: Modules Dashboard */
+        .dashboard-section { flex: 4; background: #1a1a2e; padding: 25px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
+        h2 { margin: 0 0 10px 0; color: #fff; font-size: 24px; text-align: center; border-bottom: 2px solid #383854; padding-bottom: 10px; }
+        
+        /* Individual Module Boxes */
+        .module-box { background: #24243e; padding: 15px; border-radius: 10px; border: 1px solid #383854; box-shadow: 0px 4px 6px rgba(0,0,0,0.3); }
+        .module-header { font-size: 14px; color: #00d2ff; text-transform: uppercase; font-weight: bold; margin-bottom: 10px; letter-spacing: 1px; }
+        
+        /* Module 1: Transcript Styles */
+        .chat-box { height: 250px; background: #0f0f1a; border-radius: 8px; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; border: 1px solid #383854; }
+        .user-msg { color: #fff; background: #28a745; padding: 10px; border-radius: 8px; align-self: flex-start; width: 90%; font-size: 15px; }
+        .status-msg { color: #aaa; font-style: italic; font-size: 12px; text-align: center; }
+
+        /* Module 2 & 3: Metric Styles */
+        .vocal-state { font-size: 28px; font-weight: bold; padding: 10px; border-radius: 5px; text-align: center; background: #0f0f1a; border: 1px solid #383854; transition: 0.3s; }
+        
+        /* Dynamic Colors for Vocal State */
+        .state-silent { color: #888; }
+        .state-calm { color: #2ed573; }
+        .state-stressed { color: #ffa502; }
+        .state-raised { color: #ff4757; animation: shake 0.5s; }
+
+        @keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); } }
+    </style>
+</head>
+<body>
+
+    <div class="camera-section">
+        <video id="webcam" autoplay muted playsinline></video>
+        <div class="controls">
+            <button id="startBtn">▶ Start Interview</button>
+            <button id="stopBtn">⏹ Stop Interview</button>
+        </div>
+    </div>
+
+    <div class="dashboard-section">
+        <h2>Live System Architecture</h2>
+        
+        <div class="module-box">
+            <div class="module-header">Module 1: Speech-to-Text (Whisper)</div>
+            <div class="chat-box" id="chatBox">
+                <div class="status-msg">Click 'Start Interview' to begin listening...</div>
+            </div>
+        </div>
+
+        <div class="module-box">
+            <div class="module-header">Module 2: Vocal Emotion & Risk (Librosa)</div>
+            <div class="vocal-state state-silent" id="vocalStateBox">Awaiting Audio...</div>
+        </div>
+
+        <div class="module-box">
+            <div class="module-header">Module 3: Speaker Verification (Pyannote)</div>
+            <div class="vocal-state" style="color: #aaa; font-size: 18px;" id="speakerWarningText">Pending setup...</div>
+        </div>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+        let recordInterval;
+
+        // Initialize Camera
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then(stream => { document.getElementById('webcam').srcObject = stream; })
+            .catch(err => alert("Please allow Camera and Microphone access in your browser!"));
+
+        document.getElementById('startBtn').onclick = async () => {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'inline-block';
+            
+            document.getElementById('chatBox').innerHTML += `<div class="status-msg">Listening for candidate audio...</div>`;
+
+            mediaRecorder.ondataavailable = event => {
+                audioChunks.push(event.data);
+                if(mediaRecorder.state === 'inactive') sendData();
+            };
+
+            const startRecording = () => {
+                audioChunks = [];
+                mediaRecorder.start();
+                setTimeout(() => mediaRecorder.stop(), 4000); 
+            };
+
+            startRecording();
+            recordInterval = setInterval(startRecording, 4200);
+        };
+
+        document.getElementById('stopBtn').onclick = () => {
+            clearInterval(recordInterval);
+            document.getElementById('startBtn').style.display = 'inline-block';
+            document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('chatBox').innerHTML += `<div class="status-msg">Interview Stopped.</div>`;
+            document.getElementById('vocalStateBox').innerText = "System Stopped";
+            document.getElementById('vocalStateBox').className = "vocal-state state-silent";
+        };
+
+        function sendData() {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            const formData = new FormData();
+            formData.append('audio_data', audioBlob, 'chunk.webm');
+
+            fetch('/process_audio', { method: 'POST', body: formData })
+            .then(response => response.json())
+            .then(data => {
+                // Update Module 1 (Whisper Chat)
+                if(data.transcript !== "[Silence]") {
+                    document.getElementById('chatBox').innerHTML += `<div class="user-msg"><strong>Candidate:</strong><br>${data.transcript}</div>`;
+                    document.getElementById('chatBox').scrollTop = document.getElementById('chatBox').scrollHeight;
+                }
+                
+                // Update Module 2 (Librosa Emotion State)
+                const stateBox = document.getElementById('vocalStateBox');
+                stateBox.innerText = data.vocal_state;
+                
+                // Change color based on state
+                if(data.vocal_state.includes("Silent")) stateBox.className = "vocal-state state-silent";
+                else if(data.vocal_state.includes("Calm")) stateBox.className = "vocal-state state-calm";
+                else if(data.vocal_state.includes("Stressed")) stateBox.className = "vocal-state state-stressed";
+                else if(data.vocal_state.includes("Raised")) stateBox.className = "vocal-state state-raised";
+
+                // Update Module 3 (Pyannote)
+                document.getElementById('speakerWarningText').innerText = data.speaker_warning;
+            });
+        }
+    </script>
+</body>
+</html>
